@@ -1,30 +1,47 @@
-from pbkdf2 import crypt
-import argparse
+import argparse, random
+from Cryptodome.PublicKey import RSA
+from getpass import getpass
 
-def generate_mnemonic():
-    pass
+from mnemonic import Mnemonic
 
-def mnemonic_to_seed():
-    pass
+def generate_rsa_key(bits, prng_seed):
+    random.seed(prng_seed)
+    pseudorandom_bytes = lambda n: bytes([random.randrange(0,255) for i in range(n)])
+    return RSA.generate(bits, pseudorandom_bytes)
 
-def make_rsa_key(seed):
-    # seed the RNG with the seed provided
-    # use a library to generate an RSA key, tell it to use the RND
-    pass
-
-def write_rsa_key(filename):
-    # do gpg shit
-    pass
-
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description='Convert between mnemonic phrase and gpg rsa key')
     parser.add_argument('--generate-new', action='store_true')
+    parser.add_argument('--bits', default=2048, type=int)
+    parser.add_argument('--lang')
     args = parser.parse_args()
-    print(args)
+
+    try:
+        m = Mnemonic(args.lang)
+    except Exception as e:
+        print('Error:', str(e))
+        return
 
     if args.generate_new:
-        print('generating new')
-        # get a random number from the system's RNG
-        # convert the number to a mnemonic
+        phrase = m.make_seed()
+        prng_seed = m.mnemonic_decode(phrase)
+
     else:
-        print('waiting for mnemonic phrase from stdin')
+        phrase = getpass('Enter mnemonic phrase:')
+        prng_seed = m.mnemonic_decode(phrase)
+
+    print('phrase:\n',phrase)
+    print('prng_seed:\n',prng_seed)
+    key = generate_rsa_key(args.bits, prng_seed)
+
+    #TODO
+    #TODO
+    #TODO serialize in pgp export format
+    #TODO
+    #TODO
+    # https://www.pycryptodome.org/en/latest/src/public_key/rsa.html#Crypto.PublicKey.RSA.generate
+    key.exportKey(format='PEM')
+    key.exportKey(format='DER')
+
+if __name__ == '__main__':
+    main()

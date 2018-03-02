@@ -22,20 +22,14 @@
 # ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+# now for my legal notice: fuck you don't use this for anything ever
+# this is a modified version of electrum's Mnemonic class
+
 import os
-import hmac
 import math
-import hashlib
 import unicodedata
 import string
-
-import ecdsa
-import pbkdf2
-
-#from .util import print_error
-
-#from .bitcoin import is_old_seed, is_new_seed
-#from . import version
 
 # http://www.asahi-net.or.jp/~ax2s-kmtn/ref/unicode/e_asia.html
 CJK_INTERVALS = [
@@ -114,26 +108,26 @@ filenames = {
     'zh':'chinese_simplified.txt'
 }
 
-
-
 class Mnemonic(object):
     # Seed derivation no longer follows BIP39
     # Mnemonic phrase uses a hash based checksum, instead of a wordlist-dependent checksum
 
     def __init__(self, lang=None):
-        print('Mnemonic constructor')
         lang = lang or 'en'
-        print('language', lang)
+        if lang not in filenames:
+            raise Exception('lang must be one of '+', '.join(filenames.keys()))
         filename = filenames.get(lang[0:2], 'english.txt')
         self.wordlist = load_wordlist(filename)
-        print("wordlist has %d words"%len(self.wordlist))
+       #print("wordlist has %d words"%len(self.wordlist))
 
-    @classmethod
-    def mnemonic_to_seed(self, mnemonic, passphrase):
-        PBKDF2_ROUNDS = 2048
-        mnemonic = normalize_text(mnemonic)
-        passphrase = normalize_text(passphrase)
-        return pbkdf2.PBKDF2(mnemonic, 'electrum' + passphrase, iterations = PBKDF2_ROUNDS, macmodule = hmac, digestmodule = hashlib.sha512).read(64)
+
+    #TODO figure out why electrum uses this (with a blank password) somewhere
+    #@classmethod
+    #def mnemonic_to_seed(self, mnemonic, passphrase):
+    #    PBKDF2_ROUNDS = 2048
+    #    mnemonic = normalize_text(mnemonic)
+    #    passphrase = normalize_text(passphrase)
+    #    return pbkdf2.PBKDF2(mnemonic, 'electrum' + passphrase, iterations = PBKDF2_ROUNDS, macmodule = hmac, digestmodule = hashlib.sha512).read(64)
 
     def mnemonic_encode(self, i):
         n = len(self.wordlist)
@@ -143,11 +137,6 @@ class Mnemonic(object):
             i = i//n
             words.append(self.wordlist[x])
         return ' '.join(words)
-
-    def get_suggestions(self, prefix):
-        for w in self.wordlist:
-            if w.startswith(prefix):
-                yield w
 
     def mnemonic_decode(self, seed):
         n = len(self.wordlist)
@@ -159,37 +148,45 @@ class Mnemonic(object):
             i = i*n + k
         return i
 
-#    def check_seed(self, seed, custom_entropy):
-#        assert is_new_seed(seed)
-#        i = self.mnemonic_decode(seed)
-#        return i % custom_entropy == 0
+    def make_seed(self, num_bits=132):
+        #TODO platform independence
+        with open('/proc/sys/kernel/random/entropy_avail', 'r') as f:
+            sys_entopy_avail = int(f.readline())
+            if(sys_entopy_avail < num_bits): raise Exception('not enough entropy')
 
-    def make_seed(self, seed_type='standard', num_bits=132, custom_entropy=1):
-        bpw = 11 #math.log(len(self.wordlist), 2)
-        num_bits = 132 #int(math.ceil(num_bits/bpw) * bpw)
-        # handle custom entropy; make sure we add at least 16 bits
-        n_custom = 0 #int(math.ceil(math.log(custom_entropy, 2)))
-        n = 132 #max(16, num_bits - n_custom)
+        bpw = math.log(len(self.wordlist), 2)
+        num_bits = int(math.ceil(num_bits/bpw) * bpw)
         entropy = 1
         # generate a random number s.t.
-        # 2**(n-bpw) < entropy < 2**(n)
-        # 2**(132-11) < entropy < 2**(132)
+        # 2**(num_bits-bpw) < entropy < 2**(num_bits)
         # this condition keeps the seed phrase a constant length
         # and keeps the bits of entropy above the minimum
-        while entropy < pow(2, n - bpw):
-            print('lower bound 2^'+str(n-bpw)+' bits ('+str((n-bpw)/8)+') bytes')
-            print('upper bound 2^'+str(n)+' bits ('+str(n/8)+') bytes')
-            print('n',n)
-            num_bytes = math.ceil(n/8)
-            print('num_bytes',num_bytes)
-            entropy = int.from_bytes(os.urandom(num_bytes), 'big', signed=False)
-        print('log 256 of entropy', math.log(entropy,256))
+
+        # need exactly n bits, not ceil(n/8) bytes
+        # so generate ceil(n/8) bytes then strip most significant bits
+        num_bytes = math.ceil(num_bits/8)
+        excess_bits = num_bytes * 8 - num_bits
+        while(True):
+            random_bytes = os.urandom(num_bytes)
+            entropy = int.from_bytes(random_bytes, 'big', signed=False) >> excess_bits
+
+            # keep the number if it will produce the right number of words, otherwise try again
+            if(entropy > 2**(num_bits-bpw)): break
+
+        assert 2**(num_bits-bpw) < entropy
+        assert entropy < 2**num_bits
+
         seed = self.mnemonic_encode(entropy)
         assert entropy == self.mnemonic_decode(seed)
 
-        print('%d words'%len(seed.split()))
         return seed
 
 if __name__ == '__main__':
     m = Mnemonic()
-    print(m.make_seed())
+    counter = 0
+    while(True):
+        if(len(m.make_seed().split()) != 12):
+            raise Exception('fuck')
+        #print(m.make_seed())
+        counter = counter + 1
+        if(counter % 1000 == 0): print('generated',counter)
