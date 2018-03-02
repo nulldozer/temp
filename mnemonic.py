@@ -165,24 +165,27 @@ class Mnemonic(object):
 #        return i % custom_entropy == 0
 
     def make_seed(self, seed_type='standard', num_bits=132, custom_entropy=1):
-        prefix = 1 #version.seed_prefix(seed_type) 
         bpw = 11 #math.log(len(self.wordlist), 2)
         num_bits = 132 #int(math.ceil(num_bits/bpw) * bpw)
         # handle custom entropy; make sure we add at least 16 bits
         n_custom = 0 #int(math.ceil(math.log(custom_entropy, 2)))
         n = 132 #max(16, num_bits - n_custom)
-        my_entropy = 1
-        while my_entropy < pow(2, n - bpw):
-            print('my_entropy is less than 2 ^ '+str(n-bpw))
-            # try again if seed would not contain enough words
-            my_entropy = ecdsa.util.randrange(pow(2, n))
-            print('my_entropy = randrange(order=(2 ^ '+str(n)+')) = '+str(my_entropy))
-
-        #TODO remove old loop logic
-        nonce = 1
-        i = custom_entropy * (my_entropy + nonce)
-        seed = self.mnemonic_encode(i)
-        assert i == self.mnemonic_decode(seed)
+        entropy = 1
+        # generate a random number s.t.
+        # 2**(n-bpw) < entropy < 2**(n)
+        # 2**(132-11) < entropy < 2**(132)
+        # this condition keeps the seed phrase a constant length
+        # and keeps the bits of entropy above the minimum
+        while entropy < pow(2, n - bpw):
+            print('lower bound 2^'+str(n-bpw)+' bits ('+str((n-bpw)/8)+') bytes')
+            print('upper bound 2^'+str(n)+' bits ('+str(n/8)+') bytes')
+            print('n',n)
+            num_bytes = math.ceil(n/8)
+            print('num_bytes',num_bytes)
+            entropy = int.from_bytes(os.urandom(num_bytes), 'big', signed=False)
+        print('log 256 of entropy', math.log(entropy,256))
+        seed = self.mnemonic_encode(entropy)
+        assert entropy == self.mnemonic_decode(seed)
 
         print('%d words'%len(seed.split()))
         return seed
