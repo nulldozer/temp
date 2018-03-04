@@ -3,6 +3,7 @@ from Cryptodome.PublicKey import RSA
 from getpass import getpass
 
 from mnemonic import Mnemonic
+import gpg
 
 def generate_rsa_key(bits, prng_seed):
     random.seed(prng_seed)
@@ -39,7 +40,17 @@ def main():
     #TODO serialize in pgp export format
     #TODO
     #TODO
+
+    # gpg serialization info
+    # https://tools.ietf.org/html/rfc4880#section-4
+
+    # pycryptodomex docs
     # https://www.pycryptodome.org/en/latest/src/public_key/rsa.html#Crypto.PublicKey.RSA.generate
+
+    gpg_key = gpg.serialize(key)
+
+    print('gpg_key\n',' '.join(['%02X' % char for char in gpg_key]))
+
     key.exportKey(format='PEM')
     key.exportKey(format='DER')
 
